@@ -268,6 +268,23 @@ services:
       interval: 10s
       timeout: 3s
 
+  dashboard:
+    build: ./homelab-dashboard
+    container_name: homelab-dashboard
+    ports:
+      - "3001:3001"
+    volumes:
+      - /:/host:ro                              # Host root read-only (for storage stats)
+      - ./homelab-dashboard/config:/app/config  # Edit apps.json here without rebuilding
+    environment:
+      - HOST_MOUNT=/host
+      - NODE_ENV=production
+      - PORT=3001
+      - QBIT_URL=${QBIT_URL}
+      - QBIT_USERNAME=${QBIT_USERNAME}
+      - QBIT_PASSWORD=${QBIT_PASSWORD}
+    restart: unless-stopped
+
 volumes:
     proxy-data:
     proxy-letsencrypt:
