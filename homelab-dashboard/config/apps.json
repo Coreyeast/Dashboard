@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Jellyfin",
+    "url": "http://192.168.0.76:8096",
+    "icon": "jellyfin",
+    "color": "#7B5EA7",
+    "description": "Media streaming"
+  },
+  {
+    "name": "Jellyseerr",
+    "url": "http://192.168.0.76:5055",
+    "icon": "jellyseerr",
+    "color": "#E85D04",
+    "description": "Request management"
+  },
+  {
+    "name": "Sonarr",
+    "url": "http://192.168.0.76:8989",
+    "icon": "sonarr",
+    "color": "#35C5F4",
+    "description": "TV show management"
+  },
+  {
+    "name": "Radarr",
+    "url": "http://192.168.0.76:7878",
+    "icon": "radarr",
+    "color": "#FFC230",
+    "description": "Movie management"
+  },
+  {
+    "name": "Lidarr",
+    "url": "http://192.168.0.76:8686",
+    "icon": "lidarr",
+    "color": "#00B3A4",
+    "description": "Music management"
+  },
+  {
+    "name": "Bazarr",
+    "url": "http://192.168.0.76:6767",
+    "icon": "bazarr",
+    "color": "#9AC723",
+    "description": "Subtitles"
+  },
+  {
+    "name": "Prowlarr",
+    "url": "http://192.168.0.76:9696",
+    "icon": "prowlarr",
+    "color": "#FF6B35",
+    "description": "Indexer management"
+  },
+  {
+    "name": "qBittorrent",
+    "url": "http://192.168.0.76:8080",
+    "icon": "qbittorrent",
+    "color": "#2F67BA",
+    "description": "Torrent client"
+  },
+  {
+    "name": "Jellystat",
+    "url": "http://192.168.0.76:3000",
+    "icon": "jellystat",
+    "color": "#4CAF50",
+    "description": "Jellyfin statistics"
+  }
+]
