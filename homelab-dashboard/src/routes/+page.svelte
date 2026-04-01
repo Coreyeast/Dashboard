@@ -23,8 +23,8 @@
 
   <!-- Storage panel will go here in Phase 1 Feature 2 -->
 
-  <!-- qBittorrent torrent module — gracefully shows an error if qBit is offline -->
-  <div class="mt-10">
+  <!-- qBittorrent torrent module — always rendered, shows error state if qBit is offline -->
+  <div class="mt-10 border-t border-gray-800/60 pt-10">
     <TorrentList />
   </div>
 </div>
