@@ -187,40 +187,119 @@ export function classifyState(state) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Auto-seeding management
+// ---------------------------------------------------------------------------
+
+/**
+ * Track which hashes were actively downloading on the previous poll so we
+ * can detect the moment a torrent finishes (transitions out of downloading).
+ */
+let prevDownloading = new Set();
+
+/**
+ * Runs every time torrents are fetched. When a download completes:
+ *  1. Pause any other torrent that is actively seeding.
+ *  2. Give the newly completed torrent top seeding priority.
+ *
+ * This ensures the freshest content is always next to seed.
+ *
+ * @param {object[]} raw — raw qBit torrent list
+ */
+export async function autoManageSeeding(raw) {
+  const currentDownloading = new Set(
+    raw
+      .filter((t) => classifyState(t.state).category === 'downloading')
+      .map((t) => t.hash)
+  );
+
+  // Torrents that were downloading last poll but have now finished
+  const newlyCompleted = [...prevDownloading].filter((hash) => {
+    if (currentDownloading.has(hash)) return false; // still downloading
+    const t = raw.find((r) => r.hash === hash);
+    return t && t.progress >= 0.99; // finished (not just paused mid-way)
+  });
+
+  prevDownloading = currentDownloading;
+
+  if (newlyCompleted.length === 0) return;
+
+  // Pause any torrent that is currently actively seeding
+  const activeSeeders = raw.filter(
+    (t) =>
+      (t.state === 'uploading' || t.state === 'forcedUP') &&
+      !newlyCompleted.includes(t.hash)
+  );
+  for (const t of activeSeeders) {
+    try { await actionTorrent('pause', t.hash); } catch { /* best-effort */ }
+  }
+
+  // Give each newly completed torrent top seeding priority and ensure it's not paused
+  for (const hash of newlyCompleted) {
+    try {
+      await actionTorrent('topPrio', hash);
+      const t = raw.find((r) => r.hash === hash);
+      if (t && (t.state === 'pausedUP' || t.state === 'pausedDL')) {
+        await actionTorrent('resume', hash);
+      }
+    } catch { /* best-effort */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transform + filter for display
+// ---------------------------------------------------------------------------
+
 /** Sort order weight — lower = shown first. */
 const SORT_ORDER = { downloading: 0, stalled: 1, seeding: 2, paused: 3, error: 4 };
 
 /**
- * Transform and sort the raw qBit torrent list into a shape safe to send
- * to the browser (no sensitive fields, pre-formatted strings).
+ * Transform the raw qBit list into browser-safe objects, then filter:
+ *   - All active/stalled/error downloads are shown.
+ *   - Completed (seeding/paused) items: only the 2 most recently finished.
  *
  * @param {object[]} raw
  * @returns {object[]}
  */
 export function transformTorrents(raw) {
-  return raw
-    .map((t) => {
-      const { label, category } = classifyState(t.state);
-      const isPaused = category === 'paused';
-      const isDownloading = category === 'downloading';
-      const isActive = isDownloading || category === 'seeding';
+  const mapped = raw.map((t) => {
+    const { label, category } = classifyState(t.state);
+    const isPaused = category === 'paused';
+    const isDownloading = category === 'downloading';
+    const isActive = isDownloading || category === 'seeding';
+    const isCompleted = t.progress >= 1.0;
 
-      return {
-        hash: t.hash,
-        name: t.name,
-        progress: t.progress,          // 0.0 – 1.0
-        progressPct: `${(t.progress * 100).toFixed(1)}%`,
-        state: t.state,
-        category,
-        statusLabel: label,
-        size: formatSize(t.size),
-        dlSpeed: isDownloading ? formatSpeed(t.dlspeed) : null,
-        upSpeed: isActive ? formatSpeed(t.upspeed) : null,
-        eta: isDownloading ? formatEta(t.eta) : null,
-        ratio: t.ratio.toFixed(2),
-        isPaused,
-        sortWeight: SORT_ORDER[category] ?? 99,
-      };
-    })
-    .sort((a, b) => a.sortWeight - b.sortWeight || a.name.localeCompare(b.name));
+    return {
+      hash: t.hash,
+      name: t.name,
+      progress: t.progress,
+      progressPct: `${(t.progress * 100).toFixed(1)}%`,
+      state: t.state,
+      category,
+      statusLabel: label,
+      size: formatSize(t.size),
+      dlSpeed: isDownloading ? formatSpeed(t.dlspeed) : null,
+      upSpeed: isActive ? formatSpeed(t.upspeed) : null,
+      eta: isDownloading ? formatEta(t.eta) : null,
+      ratio: t.ratio.toFixed(2),
+      isPaused,
+      isCompleted,
+      // completion_on is a real qBit field; fall back to added_on if missing
+      completedAt: t.completion_on ?? t.added_on ?? 0,
+      sortWeight: SORT_ORDER[category] ?? 99,
+    };
+  });
+
+  // Active downloads + errors — show all of these
+  const active = mapped.filter((t) => !t.isCompleted);
+
+  // Completed (seeding queue) — show only the 2 most recently finished
+  const recentCompleted = mapped
+    .filter((t) => t.isCompleted)
+    .sort((a, b) => b.completedAt - a.completedAt)
+    .slice(0, 2);
+
+  return [...active, ...recentCompleted].sort(
+    (a, b) => a.sortWeight - b.sortWeight || a.name.localeCompare(b.name)
+  );
 }

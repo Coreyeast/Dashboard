@@ -4,7 +4,15 @@
   export let torrent;
 
   const dispatch = createEventDispatcher();
-  const send = (action) => dispatch('action', { action, hashes: torrent.hash });
+
+  let pending = null; // which action is in-flight
+
+  function send(action) {
+    pending = action;
+    dispatch('action', { action, hashes: torrent.hash });
+    // Clear the pending state after a short delay (parent will re-render on fetch)
+    setTimeout(() => (pending = null), 1500);
+  }
 
   // Tailwind classes by status category
   const bar = {
@@ -74,22 +82,31 @@
     <button
       on:click={() => send(torrent.isPaused ? 'resume' : 'pause')}
       title={torrent.isPaused ? 'Resume' : 'Pause'}
-      class="flex h-6 w-6 items-center justify-center rounded text-xs
-             text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
+      disabled={pending !== null}
+      class="flex h-6 w-6 items-center justify-center rounded text-xs transition-colors
+             {pending === 'pause' || pending === 'resume'
+               ? 'animate-pulse bg-gray-700 text-gray-400'
+               : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
     >{torrent.isPaused ? '▶' : '⏸'}</button>
 
     <button
       on:click={() => send('increasePrio')}
       title="Increase priority"
-      class="flex h-5 w-6 items-center justify-center rounded text-[10px]
-             text-gray-700 transition-colors hover:bg-gray-700 hover:text-gray-300"
+      disabled={pending !== null}
+      class="flex h-5 w-6 items-center justify-center rounded text-[10px] transition-colors
+             {pending === 'increasePrio'
+               ? 'animate-pulse bg-gray-700 text-gray-400'
+               : 'text-gray-700 hover:bg-gray-700 hover:text-gray-300'}"
     >↑</button>
 
     <button
       on:click={() => send('decreasePrio')}
       title="Decrease priority"
-      class="flex h-5 w-6 items-center justify-center rounded text-[10px]
-             text-gray-700 transition-colors hover:bg-gray-700 hover:text-gray-300"
+      disabled={pending !== null}
+      class="flex h-5 w-6 items-center justify-center rounded text-[10px] transition-colors
+             {pending === 'decreasePrio'
+               ? 'animate-pulse bg-gray-700 text-gray-400'
+               : 'text-gray-700 hover:bg-gray-700 hover:text-gray-300'}"
     >↓</button>
   </div>
 </div>

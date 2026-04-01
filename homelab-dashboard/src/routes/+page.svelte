@@ -8,23 +8,23 @@
 </script>
 
 <svelte:head>
-  <title>Homelab</title>
+  <title>andChill</title>
 </svelte:head>
 
 <div class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+
   <!-- Header -->
-  <header class="mb-10">
-    <h1 class="text-2xl font-bold tracking-tight text-gray-100">Homelab</h1>
-    <p class="mt-1 text-sm text-gray-500">192.168.0.76</p>
+  <header class="mb-10 flex items-center gap-3">
+    <img src="/logo.svg" alt="andChill logo" class="h-9 w-9 rounded-lg" />
+    <h1 class="text-2xl font-bold tracking-tight text-gray-100">andChill</h1>
   </header>
 
+  <!-- Downloads — shown first so it's immediately visible -->
+  <TorrentList />
+
   <!-- App tiles -->
-  <AppGrid apps={data.apps} />
-
-  <!-- Storage panel will go here in Phase 1 Feature 2 -->
-
-  <!-- qBittorrent torrent module — always rendered, shows error state if qBit is offline -->
   <div class="mt-10 border-t border-gray-800/60 pt-10">
-    <TorrentList />
+    <AppGrid apps={data.apps} />
   </div>
+
 </div>
