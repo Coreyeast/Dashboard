@@ -1,57 +1,79 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME } from 'svelte-dnd-action';
+  import { flip } from 'svelte/animate';
   import TorrentRow from './TorrentRow.svelte';
 
-  let torrents = null;
-  let error = null;
-  let actionError = null;   // transient error shown after a failed button action
-  let lastUpdated = null;
-  let connected = false;
-  let timeLabel = '';
+  const FLIP_MS = 200;
+  const POLL_MS = 5000;
+
+  let torrents  = null;   // null = loading, [] = empty, [...] = data
+  let error     = null;
+  let actionError   = null;
+  let lastUpdated   = null;
+  let connected     = false;
+  let timeLabel     = '';
   let pollId, clockId, actionErrorId;
 
-  // ---------------------------------------------------------------------------
-  // Fetch
-  // ---------------------------------------------------------------------------
+  // True while the user has a drag in progress — suppresses auto-poll updates
+  let dragging = false;
+
+  // ── Derived sections ───────────────────────────────────────────────────────
+  // Active queue: anything not fully downloaded
+  $: activeItems  = torrents ? torrents.filter((t) => t.progress < 1.0)  : [];
+  // Seeding section: fully downloaded (max 2, already filtered server-side)
+  $: seedingItems = torrents ? torrents.filter((t) => t.progress >= 1.0) : [];
+
+  // Local drag-and-drop copy — only syncs from server when not dragging
+  let dndItems = [];
+  $: if (!dragging) dndItems = activeItems;
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
 
   async function fetchTorrents() {
     try {
-      const res = await fetch('/api/torrents');
+      const res  = await fetch('/api/torrents');
       const data = await res.json();
       if (!res.ok || data.error) {
-        error = data.error ?? `HTTP ${res.status}`;
+        error     = data.error ?? `HTTP ${res.status}`;
         connected = false;
       } else {
-        torrents = data;
-        error = null;
-        connected = true;
+        torrents    = data;
+        error       = null;
+        connected   = true;
         lastUpdated = new Date();
       }
     } catch (e) {
-      error = `Network error — ${e.message}`;
+      error     = `Network error — ${e.message}`;
       connected = false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Actions
-  // ---------------------------------------------------------------------------
+  // ── Actions ────────────────────────────────────────────────────────────────
 
-  async function dispatchAction(action, hashes) {
+  /** Sends a single action to the server, returns true on success. */
+  async function sendAction(action, hashes) {
     try {
-      const res = await fetch(`/api/torrents/${action}`, {
-        method: 'POST',
+      const res  = await fetch(`/api/torrents/${action}`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hashes }),
+        body:    JSON.stringify({ hashes }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
         showActionError(data.error ?? `Action failed (HTTP ${res.status})`);
+        return false;
       }
+      return true;
     } catch (e) {
       showActionError(`Could not reach server — ${e.message}`);
+      return false;
     }
-    // Refresh to reflect the new state regardless of success/failure
+  }
+
+  /** Send action then immediately re-fetch. Used by row buttons. */
+  async function dispatchAction(action, hashes) {
+    await sendAction(action, hashes);
     await fetchTorrents();
   }
 
@@ -65,13 +87,57 @@
     dispatchAction(e.detail.action, e.detail.hashes);
   }
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
+  // ── Drag and drop ──────────────────────────────────────────────────────────
+
+  function handleConsider(e) {
+    dragging  = true;
+    dndItems  = e.detail.items;
+  }
+
+  async function handleFinalize(e) {
+    const newItems  = e.detail.items;
+    const draggedId = e.detail.info.id;
+
+    const newIndex = newItems.findIndex((t) => t.id === draggedId);
+    const oldIndex = activeItems.findIndex((t) => t.id === draggedId);
+
+    if (newIndex !== oldIndex) {
+      const draggedItem = newItems[newIndex];
+
+      // Auto-resume: stopped torrent dragged above a downloading item
+      const hasDownloadingAbove = newItems
+        .slice(0, newIndex)
+        .some((t) => t.category === 'downloading');
+      if (draggedItem.category === 'stopped' && hasDownloadingAbove) {
+        await sendAction('resume', draggedItem.hash);
+      }
+
+      // Reorder via qBittorrent priority API
+      if (newIndex === 0) {
+        await sendAction('topPrio', draggedItem.hash);
+      } else if (newIndex < oldIndex) {
+        const steps = oldIndex - newIndex;
+        for (let i = 0; i < steps; i++) {
+          await sendAction('increasePrio', draggedItem.hash);
+        }
+      } else {
+        const steps = newIndex - oldIndex;
+        for (let i = 0; i < steps; i++) {
+          await sendAction('decreasePrio', draggedItem.hash);
+        }
+      }
+    }
+
+    // Fetch fresh state first, then release the drag lock so dndItems syncs cleanly
+    await fetchTorrents();
+    dragging = false;
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   onMount(() => {
     fetchTorrents();
-    pollId  = setInterval(fetchTorrents, 5000);
+    pollId  = setInterval(() => { if (!dragging) fetchTorrents(); }, POLL_MS);
     clockId = setInterval(() => {
       if (lastUpdated) {
         const sec = Math.round((Date.now() - lastUpdated.getTime()) / 1000);
@@ -97,7 +163,7 @@
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
     <div class="flex items-center gap-2.5">
-      <!-- Animated connection dot -->
+      <!-- Connection indicator dot -->
       <span class="relative flex h-2.5 w-2.5" title={connected ? 'Connected' : 'Unreachable'}>
         {#if connected}
           <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-40"></span>
@@ -111,7 +177,7 @@
 
       {#if torrents !== null && !error}
         <span class="font-mono text-[10px] text-gray-600">
-          {torrents.length} torrent{torrents.length !== 1 ? 's' : ''}
+          {activeItems.length} active
         </span>
       {/if}
     </div>
@@ -136,7 +202,7 @@
   </div>
 
   <!-- ── Body ───────────────────────────────────────────────────────────── -->
-  <div class="p-4">
+  <div class="p-3">
 
     <!-- Action error toast -->
     {#if actionError}
@@ -147,7 +213,7 @@
       </div>
     {/if}
 
-    <!-- Connection error -->
+    <!-- Connection error state -->
     {#if error}
       <div class="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
         <span class="mt-0.5 font-mono text-base font-bold text-red-400">!</span>
@@ -162,24 +228,64 @@
 
     <!-- First-load skeleton -->
     {:else if torrents === null}
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-1.5">
         {#each [1, 2, 3] as _}
           <div class="h-[68px] animate-pulse rounded-lg bg-gray-800"></div>
         {/each}
       </div>
 
-    <!-- Empty -->
+    <!-- Empty state -->
     {:else if torrents.length === 0}
       <p class="py-4 text-center font-mono text-xs text-gray-600">No active torrents</p>
 
-    <!-- Torrent rows -->
     {:else}
-      <div class="flex flex-col gap-1.5">
-        {#each torrents as torrent (torrent.hash)}
-          <TorrentRow {torrent} on:action={handleRowAction} />
-        {/each}
-      </div>
-    {/if}
 
+      <!-- ── Active download queue (drag-and-drop) ── -->
+      {#if dndItems.length > 0}
+        <div
+          use:dndzone={{ items: dndItems, flipDurationMs: FLIP_MS, type: 'torrents' }}
+          on:consider={handleConsider}
+          on:finalize={handleFinalize}
+          class="flex flex-col gap-1"
+        >
+          {#each dndItems as torrent, i (torrent.id)}
+            <div animate:flip={{ duration: FLIP_MS }}>
+              <TorrentRow
+                {torrent}
+                isFirst={i === 0}
+                isLast={i === dndItems.length - 1}
+                isSeeding={false}
+                on:action={handleRowAction}
+              />
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- ── Seeding section divider ── -->
+      {#if seedingItems.length > 0}
+        <div class="my-3 flex items-center gap-3">
+          <div class="h-px flex-1 bg-gray-800"></div>
+          <span class="font-mono text-[10px] uppercase tracking-widest text-gray-700">
+            recently seeded
+          </span>
+          <div class="h-px flex-1 bg-gray-800"></div>
+        </div>
+
+        <!-- Seeding rows (no DND, muted styling) -->
+        <div class="flex flex-col gap-1 opacity-70">
+          {#each seedingItems as torrent (torrent.id)}
+            <TorrentRow
+              {torrent}
+              isSeeding={true}
+              isFirst={false}
+              isLast={false}
+              on:action={handleRowAction}
+            />
+          {/each}
+        </div>
+      {/if}
+
+    {/if}
   </div>
 </div>

@@ -1,50 +1,93 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
+  /** @type {{ id: string, hash: string, name: string, progress: number, progressPct: string,
+   *           state: string, category: string, statusLabel: string, priority: number,
+   *           size: string, dlSpeed: string|null, upSpeed: string|null, eta: string|null,
+   *           ratio: string }} */
   export let torrent;
 
-  const dispatch = createEventDispatcher();
+  /** True when this row is in the seeding section (no drag handle, no priority controls) */
+  export let isSeeding = false;
 
-  let pending = null; // which action is in-flight
+  /** Disable "top" and "up" buttons when this is the first item in the queue */
+  export let isFirst = false;
+
+  /** Disable "down" button when this is the last item in the queue */
+  export let isLast = false;
+
+  const dispatch = createEventDispatcher();
+  let pending = null;
 
   function send(action) {
     pending = action;
     dispatch('action', { action, hashes: torrent.hash });
-    // Clear the pending state after a short delay (parent will re-render on fetch)
     setTimeout(() => (pending = null), 1500);
   }
 
-  // Tailwind classes by status category
+  $: isStopped = torrent.category === 'stopped';
+
+  // Progress bar colour by status
   const bar = {
     downloading: 'bg-green-500',
-    seeding:     'bg-blue-500',
-    paused:      'bg-gray-600',
     stalled:     'bg-amber-500',
+    stopped:     'bg-gray-600',
+    queued:      'bg-blue-500',
+    seeding:     'bg-teal-500',
     error:       'bg-red-500',
   };
 
+  // Status badge colour by status
   const badge = {
     downloading: 'bg-green-500/20 text-green-400 border-green-500/30',
-    seeding:     'bg-blue-500/20  text-blue-400  border-blue-500/30',
-    paused:      'bg-gray-700/50  text-gray-400  border-gray-600/30',
     stalled:     'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    stopped:     'bg-gray-700/50  text-gray-400  border-gray-600/30',
+    queued:      'bg-blue-500/20  text-blue-400  border-blue-500/30',
+    seeding:     'bg-teal-500/20  text-teal-400  border-teal-500/30',
     error:       'bg-red-500/20   text-red-400   border-red-500/30',
   };
+
+  $: barClass  = bar[torrent.category]   ?? bar.error;
+  $: badgeClass = badge[torrent.category] ?? badge.error;
 </script>
 
 <div
-  class="group grid grid-cols-[1fr_auto] gap-x-2 rounded-lg border border-transparent
-         px-3 py-2.5 transition-colors hover:border-gray-700/60 hover:bg-gray-800/50"
+  class="grid items-center gap-x-2 rounded-lg border border-transparent px-2 py-2
+         transition-colors hover:border-gray-700/60 hover:bg-gray-800/50"
+  style="grid-template-columns: {isSeeding ? '0px 0px' : '14px 28px'} 1fr auto"
 >
-  <!-- Left: name + bar + stats -->
+
+  <!-- ── Drag handle (active items only) ─────────────────────────────────── -->
+  {#if !isSeeding}
+    <div class="flex shrink-0 cursor-grab items-center text-gray-700 hover:text-gray-500
+                active:cursor-grabbing" title="Drag to reorder">
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
+        <circle cx="2.5" cy="2"  r="1.3"/>
+        <circle cx="7.5" cy="2"  r="1.3"/>
+        <circle cx="2.5" cy="7"  r="1.3"/>
+        <circle cx="7.5" cy="7"  r="1.3"/>
+        <circle cx="2.5" cy="12" r="1.3"/>
+        <circle cx="7.5" cy="12" r="1.3"/>
+      </svg>
+    </div>
+  {/if}
+
+  <!-- ── Priority number (active items only) ─────────────────────────────── -->
+  {#if !isSeeding}
+    <span class="shrink-0 text-right font-mono text-[10px] text-gray-600" aria-label="Priority">
+      {torrent.priority > 0 ? `#${torrent.priority}` : '—'}
+    </span>
+  {/if}
+
+  <!-- ── Main content: name + progress bar + stats ────────────────────────── -->
   <div class="min-w-0">
 
-    <!-- Name row -->
+    <!-- Name + badge -->
     <div class="flex items-center gap-2">
       <span class="truncate text-sm text-gray-200" title={torrent.name}>
         {torrent.name}
       </span>
-      <span class="shrink-0 rounded border px-1.5 py-px font-mono text-[9px] font-medium {badge[torrent.category]}">
+      <span class="shrink-0 rounded border px-1.5 py-px font-mono text-[9px] font-medium {badgeClass}">
         {torrent.statusLabel}
       </span>
     </div>
@@ -52,7 +95,7 @@
     <!-- Progress bar -->
     <div class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-gray-800">
       <div
-        class="h-full rounded-full transition-[width] duration-700 ease-out {bar[torrent.category]}"
+        class="h-full rounded-full transition-[width] duration-700 ease-out {barClass}"
         style="width: {torrent.progress * 100}%"
       ></div>
     </div>
@@ -66,7 +109,7 @@
         <span class="font-mono text-[11px] text-green-400">↓ {torrent.dlSpeed}</span>
       {/if}
       {#if torrent.upSpeed}
-        <span class="font-mono text-[11px] text-blue-400">↑ {torrent.upSpeed}</span>
+        <span class="font-mono text-[11px] text-teal-400">↑ {torrent.upSpeed}</span>
       {/if}
       {#if torrent.eta}
         <span class="font-mono text-[11px] text-gray-500">{torrent.eta}</span>
@@ -75,38 +118,68 @@
     </div>
   </div>
 
-  <!-- Right: controls — always visible on mobile, hover on desktop -->
-  <div class="flex shrink-0 flex-col items-center justify-center gap-0.5
-              opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+  <!-- ── Controls ─────────────────────────────────────────────────────────── -->
+  <div class="ml-1 flex shrink-0 items-center gap-0.5">
 
+    <!-- Pause / Resume toggle -->
     <button
-      on:click={() => send(torrent.isPaused ? 'resume' : 'pause')}
-      title={torrent.isPaused ? 'Resume' : 'Pause'}
+      on:click={() => send(isStopped ? 'resume' : 'pause')}
+      title={isStopped ? 'Resume' : 'Pause'}
       disabled={pending !== null}
       class="flex h-6 w-6 items-center justify-center rounded text-xs transition-colors
              {pending === 'pause' || pending === 'resume'
                ? 'animate-pulse bg-gray-700 text-gray-400'
-               : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
-    >{torrent.isPaused ? '▶' : '⏸'}</button>
+               : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'}"
+    >{isStopped ? '▶' : '⏸'}</button>
 
-    <button
-      on:click={() => send('increasePrio')}
-      title="Increase priority"
-      disabled={pending !== null}
-      class="flex h-5 w-6 items-center justify-center rounded text-[10px] transition-colors
-             {pending === 'increasePrio'
-               ? 'animate-pulse bg-gray-700 text-gray-400'
-               : 'text-gray-700 hover:bg-gray-700 hover:text-gray-300'}"
-    >↑</button>
+    <!-- Priority buttons (active queue items only) -->
+    {#if !isSeeding}
 
-    <button
-      on:click={() => send('decreasePrio')}
-      title="Decrease priority"
-      disabled={pending !== null}
-      class="flex h-5 w-6 items-center justify-center rounded text-[10px] transition-colors
-             {pending === 'decreasePrio'
-               ? 'animate-pulse bg-gray-700 text-gray-400'
-               : 'text-gray-700 hover:bg-gray-700 hover:text-gray-300'}"
-    >↓</button>
+      <!-- Top priority -->
+      <button
+        on:click={() => send('topPrio')}
+        title="Top priority"
+        disabled={pending !== null || isFirst}
+        class="flex h-6 w-6 items-center justify-center rounded font-mono text-[11px]
+               transition-colors
+               {isFirst
+                 ? 'cursor-not-allowed text-gray-700'
+                 : pending === 'topPrio'
+                   ? 'animate-pulse bg-gray-700 text-gray-400'
+                   : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
+        aria-label="Move to top"
+      >↟</button>
+
+      <!-- Move up one -->
+      <button
+        on:click={() => send('increasePrio')}
+        title="Move up one"
+        disabled={pending !== null || isFirst}
+        class="flex h-6 w-6 items-center justify-center rounded font-mono text-[11px]
+               transition-colors
+               {isFirst
+                 ? 'cursor-not-allowed text-gray-700'
+                 : pending === 'increasePrio'
+                   ? 'animate-pulse bg-gray-700 text-gray-400'
+                   : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
+        aria-label="Move up"
+      >↑</button>
+
+      <!-- Move down one -->
+      <button
+        on:click={() => send('decreasePrio')}
+        title="Move down one"
+        disabled={pending !== null || isLast}
+        class="flex h-6 w-6 items-center justify-center rounded font-mono text-[11px]
+               transition-colors
+               {isLast
+                 ? 'cursor-not-allowed text-gray-700'
+                 : pending === 'decreasePrio'
+                   ? 'animate-pulse bg-gray-700 text-gray-400'
+                   : 'text-gray-500 hover:bg-gray-700 hover:text-gray-200'}"
+        aria-label="Move down"
+      >↓</button>
+
+    {/if}
   </div>
 </div>
