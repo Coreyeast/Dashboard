@@ -1,13 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Blocking theme script — reads localStorage before first paint to prevent FOUC -->
+    <script>
+      (function () {
+        var t = localStorage.getItem('theme');
+        document.documentElement.classList.toggle('dark', t !== 'light');
+        document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', t === 'light' ? 'light' : 'dark');
+      })();
+    </script>
     <meta name="color-scheme" content="dark" />
     %sveltekit.head%
   </head>
-  <body data-sveltekit-preload-data="hover" class="bg-gray-950 text-gray-100 antialiased">
+  <body
+    data-sveltekit-preload-data="hover"
+    class="bg-slate-100 dark:bg-gray-950 text-slate-900 dark:text-gray-100 antialiased"
+  >
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

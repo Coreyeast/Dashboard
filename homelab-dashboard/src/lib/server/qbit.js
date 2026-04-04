@@ -94,6 +94,16 @@ async function request(path, options = {}, isRetry = false) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Returns transfer/speed info from qBittorrent (dl speed, up speed, free space).
+ * @returns {Promise<object>}
+ */
+export async function fetchTransferInfo() {
+  const res = await request('/api/v2/transfer/info');
+  if (!res.ok) throw new Error(`Failed to fetch transfer info: ${res.status}`);
+  return res.json();
+}
+
+/**
  * Returns the raw torrent list from qBittorrent.
  * @returns {Promise<object[]>}
  */

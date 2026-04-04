@@ -41,8 +41,6 @@
         error       = null;
         connected   = true;
         lastUpdated = new Date();
-        // Only update the DND list when we are not mid-drag, so an in-flight
-        // poll cannot snap the list back to server order during a drag.
         if (!dragging) {
           dndItems = data.filter((t) => t.progress < 1.0);
         }
@@ -97,12 +95,9 @@
   }
 
   async function handleFinalize(e) {
-    // Strip the DND shadow placeholder item before using the list
     const newItems  = e.detail.items.filter((t) => !t[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
     const draggedId = e.detail.info.id;
 
-    // Show the new order immediately (optimistic) — this is now the source of truth
-    // until the next poll brings confirmed server data.
     dndItems = newItems;
 
     const newIndex = newItems.findIndex((t) => t.id === draggedId);
@@ -111,7 +106,6 @@
     if (newIndex !== oldIndex) {
       const draggedItem = newItems[newIndex];
 
-      // Auto-resume: stopped torrent dragged above a downloading item
       const hasDownloadingAbove = newItems
         .slice(0, newIndex)
         .some((t) => t.category === 'downloading');
@@ -119,7 +113,6 @@
         await sendAction('resume', draggedItem.hash);
       }
 
-      // Reorder via qBittorrent priority API
       if (newIndex === 0) {
         await sendAction('topPrio', draggedItem.hash);
       } else if (newIndex < oldIndex) {
@@ -133,9 +126,6 @@
       }
     }
 
-    // Release drag lock. dndItems stays as the optimistic order; the next
-    // poll (up to POLL_MS away, by which time qBit will have processed the
-    // priority changes) will overwrite it with confirmed server data.
     dragging = false;
   }
 
@@ -164,10 +154,12 @@
   }
 </script>
 
-<div class="rounded-xl border border-gray-800 bg-gray-900/40">
+<div class="rounded-xl border border-slate-200 bg-white shadow-sm
+            dark:border-gray-800 dark:bg-gray-900/40 dark:shadow-none">
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
-  <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+  <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3
+              dark:border-gray-800">
     <div class="flex items-center gap-2.5">
       <span class="relative flex h-2.5 w-2.5" title={connected ? 'Connected' : 'Unreachable'}>
         {#if connected}
@@ -176,12 +168,12 @@
         <span class="relative inline-flex h-2.5 w-2.5 rounded-full {connected ? 'bg-green-500' : 'bg-red-500'}"></span>
       </span>
 
-      <h2 class="font-mono text-xs font-semibold uppercase tracking-[0.15em] text-gray-300">
+      <h2 class="font-mono text-xs font-semibold uppercase tracking-[0.15em] text-slate-600 dark:text-gray-300">
         Downloads
       </h2>
 
       {#if torrents !== null && !error}
-        <span class="font-mono text-[10px] text-gray-600">
+        <span class="font-mono text-[10px] text-slate-400 dark:text-gray-600">
           {activeItems.length} active
         </span>
       {/if}
@@ -189,18 +181,20 @@
 
     <div class="flex items-center gap-3">
       {#if lastUpdated}
-        <span class="font-mono text-[10px] text-gray-600">{timeLabel}</span>
+        <span class="font-mono text-[10px] text-slate-400 dark:text-gray-600">{timeLabel}</span>
       {/if}
       {#if connected}
         <button
           on:click={() => dispatchAction('pause', 'all')}
-          class="rounded border border-gray-700 px-2 py-0.5 font-mono text-[10px] text-gray-400
-                 transition-colors hover:border-gray-500 hover:text-gray-200"
+          class="rounded border border-slate-300 px-2 py-0.5 font-mono text-[10px]
+                 text-slate-500 transition-colors hover:border-slate-500 hover:text-slate-800
+                 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200"
         >pause all</button>
         <button
           on:click={() => dispatchAction('resume', 'all')}
-          class="rounded border border-gray-700 px-2 py-0.5 font-mono text-[10px] text-gray-400
-                 transition-colors hover:border-gray-500 hover:text-gray-200"
+          class="rounded border border-slate-300 px-2 py-0.5 font-mono text-[10px]
+                 text-slate-500 transition-colors hover:border-slate-500 hover:text-slate-800
+                 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200"
         >resume all</button>
       {/if}
     </div>
@@ -211,7 +205,7 @@
 
     {#if actionError}
       <div class="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/40
-                  bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-300">
         <span class="font-mono font-bold">!</span>
         <span class="font-mono">{actionError}</span>
       </div>
@@ -219,11 +213,11 @@
 
     {#if error}
       <div class="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
-        <span class="mt-0.5 font-mono text-base font-bold text-red-400">!</span>
+        <span class="mt-0.5 font-mono text-base font-bold text-red-500 dark:text-red-400">!</span>
         <div>
-          <p class="font-mono text-sm font-semibold text-red-300">qBittorrent unavailable</p>
-          <p class="mt-0.5 font-mono text-xs text-red-400/70">{error}</p>
-          <p class="mt-1 font-mono text-[10px] text-red-500/50">
+          <p class="font-mono text-sm font-semibold text-red-600 dark:text-red-300">qBittorrent unavailable</p>
+          <p class="mt-0.5 font-mono text-xs text-red-500/80 dark:text-red-400/70">{error}</p>
+          <p class="mt-1 font-mono text-[10px] text-red-400/60 dark:text-red-500/50">
             Check QBIT_URL / QBIT_USERNAME / QBIT_PASSWORD — retrying every 5s
           </p>
         </div>
@@ -232,12 +226,12 @@
     {:else if torrents === null}
       <div class="flex flex-col gap-1.5">
         {#each [1, 2, 3] as _}
-          <div class="h-[68px] animate-pulse rounded-lg bg-gray-800"></div>
+          <div class="h-[68px] animate-pulse rounded-lg bg-slate-200 dark:bg-gray-800"></div>
         {/each}
       </div>
 
     {:else if torrents.length === 0}
-      <p class="py-4 text-center font-mono text-xs text-gray-600">No active torrents</p>
+      <p class="py-4 text-center font-mono text-xs text-slate-400 dark:text-gray-600">No active torrents</p>
 
     {:else}
 
@@ -266,11 +260,11 @@
       <!-- ── Recently seeded divider + section ── -->
       {#if seedingItems.length > 0}
         <div class="my-3 flex items-center gap-3">
-          <div class="h-px flex-1 bg-gray-800"></div>
-          <span class="font-mono text-[10px] uppercase tracking-widest text-gray-700">
+          <div class="h-px flex-1 bg-slate-200 dark:bg-gray-800"></div>
+          <span class="font-mono text-[10px] uppercase tracking-widest text-slate-400 dark:text-gray-700">
             recently seeded
           </span>
-          <div class="h-px flex-1 bg-gray-800"></div>
+          <div class="h-px flex-1 bg-slate-200 dark:bg-gray-800"></div>
         </div>
 
         <div class="flex flex-col gap-1 opacity-70">
