@@ -8,7 +8,8 @@
   export let app;
   export let showPort = false;
 
-  $: initials = app.name.slice(0, 2).toUpperCase();
+  $: displayName = app.label ?? app.name;
+  $: initials = displayName.slice(0, 2).toUpperCase();
 
   $: port = (() => {
     try {
@@ -35,7 +36,7 @@
 
   <!-- Name (+ optional port on mobile) -->
   <span class="min-w-0">
-    <span class="block text-sm text-gray-300 group-hover:text-white">{app.name}</span>
+    <span class="block text-sm text-gray-300 group-hover:text-white">{displayName}</span>
     {#if showPort && port}
       <span class="block font-mono text-[10px] text-gray-600">{port}</span>
     {/if}

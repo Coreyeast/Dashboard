@@ -22,6 +22,13 @@ const VALID_ACTIONS = new Set([
   'decreasePrio',
 ]);
 
+// qBittorrent v5 renamed pause→stop and resume→start.
+// We translate before hitting the API so the rest of the codebase stays clean.
+const ACTION_MAP = {
+  pause:  'stop',
+  resume: 'start',
+};
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -108,14 +115,15 @@ export async function actionTorrent(action, hashes) {
   }
 
   const body = new URLSearchParams({ hashes });
+  const apiAction = ACTION_MAP[action] ?? action;
 
-  const res = await request(`/api/v2/torrents/${action}`, {
+  const res = await request(`/api/v2/torrents/${apiAction}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   });
 
-  if (!res.ok) throw new Error(`Torrent action "${action}" failed: ${res.status}`);
+  if (!res.ok) throw new Error(`Torrent action "${action}" (→ ${apiAction}) failed: ${res.status}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +253,7 @@ export async function autoManageSeeding(raw) {
 /**
  * Transform the raw qBit list into browser-safe objects, then filter:
  *   - All torrents with progress < 1.0 (anything not fully downloaded)
- *   - The 2 most recently completed torrents (by completion_on, descending)
+ *   - The 3 most recently completed torrents (by completion_on, descending)
  *
  * Active queue items are sorted by qBit priority (ascending, 0 goes last).
  * Completed items are appended at the end.
@@ -292,11 +300,11 @@ export function transformTorrents(raw) {
       return a.priority - b.priority;
     });
 
-  // 2 most recently completed (seeding queue)
+  // 3 most recently completed (seeding queue)
   const recentCompleted = mapped
     .filter((t) => t.progress >= 1.0)
     .sort((a, b) => b.completedAt - a.completedAt)
-    .slice(0, 2);
+    .slice(0, 3);
 
   return [...incomplete, ...recentCompleted];
 }

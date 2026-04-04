@@ -19,7 +19,7 @@
   role="img"
 >
   <!-- Rounded square background -->
-  <rect width="32" height="32" rx="8" fill="#7B5EA7" />
+  <rect width="32" height="32" rx="8" fill="#B5233E" />
   <!-- Play triangle -->
   <path d="M12 9.5 L12 22.5 L24 16 Z" fill="white" opacity="0.95" />
   <!-- Small accent dot — hints at the "and" in andChill -->
