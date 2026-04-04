@@ -7,26 +7,25 @@
   const FLIP_MS = 200;
   const POLL_MS = 5000;
 
-  let torrents  = null;   // null = loading, [] = empty, [...] = data
-  let error     = null;
-  let actionError   = null;
-  let lastUpdated   = null;
-  let connected     = false;
-  let timeLabel     = '';
+  let torrents    = null;
+  let error       = null;
+  let actionError = null;
+  let lastUpdated = null;
+  let connected   = false;
+  let timeLabel   = '';
   let pollId, clockId, actionErrorId;
 
-  // True while the user has a drag in progress — suppresses auto-poll updates
+  // True while user is dragging — suppresses poll-driven dndItems updates
   let dragging = false;
 
-  // ── Derived sections ───────────────────────────────────────────────────────
-  // Active queue: anything not fully downloaded
+  // Derived sections (reactive from torrents)
   $: activeItems  = torrents ? torrents.filter((t) => t.progress < 1.0)  : [];
-  // Seeding section: fully downloaded (max 2, already filtered server-side)
   $: seedingItems = torrents ? torrents.filter((t) => t.progress >= 1.0) : [];
 
-  // Local drag-and-drop copy — only syncs from server when not dragging
+  // dndItems is the local ordered list for the drag-and-drop zone.
+  // It is manually synced from server data — NOT via a reactive statement —
+  // so that a drag finalize never gets overwritten by a stale re-fetch.
   let dndItems = [];
-  $: if (!dragging) dndItems = activeItems;
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -42,6 +41,11 @@
         error       = null;
         connected   = true;
         lastUpdated = new Date();
+        // Only update the DND list when we are not mid-drag, so an in-flight
+        // poll cannot snap the list back to server order during a drag.
+        if (!dragging) {
+          dndItems = data.filter((t) => t.progress < 1.0);
+        }
       }
     } catch (e) {
       error     = `Network error — ${e.message}`;
@@ -51,7 +55,6 @@
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  /** Sends a single action to the server, returns true on success. */
   async function sendAction(action, hashes) {
     try {
       const res  = await fetch(`/api/torrents/${action}`, {
@@ -71,7 +74,6 @@
     }
   }
 
-  /** Send action then immediately re-fetch. Used by row buttons. */
   async function dispatchAction(action, hashes) {
     await sendAction(action, hashes);
     await fetchTorrents();
@@ -90,13 +92,18 @@
   // ── Drag and drop ──────────────────────────────────────────────────────────
 
   function handleConsider(e) {
-    dragging  = true;
-    dndItems  = e.detail.items;
+    dragging = true;
+    dndItems = e.detail.items;
   }
 
   async function handleFinalize(e) {
-    const newItems  = e.detail.items;
+    // Strip the DND shadow placeholder item before using the list
+    const newItems  = e.detail.items.filter((t) => !t[SHADOW_ITEM_MARKER_PROPERTY_NAME]);
     const draggedId = e.detail.info.id;
+
+    // Show the new order immediately (optimistic) — this is now the source of truth
+    // until the next poll brings confirmed server data.
+    dndItems = newItems;
 
     const newIndex = newItems.findIndex((t) => t.id === draggedId);
     const oldIndex = activeItems.findIndex((t) => t.id === draggedId);
@@ -116,20 +123,19 @@
       if (newIndex === 0) {
         await sendAction('topPrio', draggedItem.hash);
       } else if (newIndex < oldIndex) {
-        const steps = oldIndex - newIndex;
-        for (let i = 0; i < steps; i++) {
+        for (let i = 0; i < oldIndex - newIndex; i++) {
           await sendAction('increasePrio', draggedItem.hash);
         }
       } else {
-        const steps = newIndex - oldIndex;
-        for (let i = 0; i < steps; i++) {
+        for (let i = 0; i < newIndex - oldIndex; i++) {
           await sendAction('decreasePrio', draggedItem.hash);
         }
       }
     }
 
-    // Fetch fresh state first, then release the drag lock so dndItems syncs cleanly
-    await fetchTorrents();
+    // Release drag lock. dndItems stays as the optimistic order; the next
+    // poll (up to POLL_MS away, by which time qBit will have processed the
+    // priority changes) will overwrite it with confirmed server data.
     dragging = false;
   }
 
@@ -163,7 +169,6 @@
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <div class="flex items-center justify-between border-b border-gray-800 px-4 py-3">
     <div class="flex items-center gap-2.5">
-      <!-- Connection indicator dot -->
       <span class="relative flex h-2.5 w-2.5" title={connected ? 'Connected' : 'Unreachable'}>
         {#if connected}
           <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-40"></span>
@@ -204,7 +209,6 @@
   <!-- ── Body ───────────────────────────────────────────────────────────── -->
   <div class="p-3">
 
-    <!-- Action error toast -->
     {#if actionError}
       <div class="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/40
                   bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
@@ -213,7 +217,6 @@
       </div>
     {/if}
 
-    <!-- Connection error state -->
     {#if error}
       <div class="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3">
         <span class="mt-0.5 font-mono text-base font-bold text-red-400">!</span>
@@ -226,7 +229,6 @@
         </div>
       </div>
 
-    <!-- First-load skeleton -->
     {:else if torrents === null}
       <div class="flex flex-col gap-1.5">
         {#each [1, 2, 3] as _}
@@ -234,7 +236,6 @@
         {/each}
       </div>
 
-    <!-- Empty state -->
     {:else if torrents.length === 0}
       <p class="py-4 text-center font-mono text-xs text-gray-600">No active torrents</p>
 
@@ -262,7 +263,7 @@
         </div>
       {/if}
 
-      <!-- ── Seeding section divider ── -->
+      <!-- ── Recently seeded divider + section ── -->
       {#if seedingItems.length > 0}
         <div class="my-3 flex items-center gap-3">
           <div class="h-px flex-1 bg-gray-800"></div>
@@ -272,7 +273,6 @@
           <div class="h-px flex-1 bg-gray-800"></div>
         </div>
 
-        <!-- Seeding rows (no DND, muted styling) -->
         <div class="flex flex-col gap-1 opacity-70">
           {#each seedingItems as torrent (torrent.id)}
             <TorrentRow

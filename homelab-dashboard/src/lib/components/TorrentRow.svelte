@@ -1,19 +1,9 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
-  /** @type {{ id: string, hash: string, name: string, progress: number, progressPct: string,
-   *           state: string, category: string, statusLabel: string, priority: number,
-   *           size: string, dlSpeed: string|null, upSpeed: string|null, eta: string|null,
-   *           ratio: string }} */
   export let torrent;
-
-  /** True when this row is in the seeding section (no drag handle, no priority controls) */
   export let isSeeding = false;
-
-  /** Disable "top" and "up" buttons when this is the first item in the queue */
   export let isFirst = false;
-
-  /** Disable "down" button when this is the last item in the queue */
   export let isLast = false;
 
   const dispatch = createEventDispatcher();
@@ -27,7 +17,6 @@
 
   $: isStopped = torrent.category === 'stopped';
 
-  // Progress bar colour by status
   const bar = {
     downloading: 'bg-green-500',
     stalled:     'bg-amber-500',
@@ -37,7 +26,6 @@
     error:       'bg-red-500',
   };
 
-  // Status badge colour by status
   const badge = {
     downloading: 'bg-green-500/20 text-green-400 border-green-500/30',
     stalled:     'bg-amber-500/20 text-amber-400 border-amber-500/30',
@@ -47,39 +35,49 @@
     error:       'bg-red-500/20   text-red-400   border-red-500/30',
   };
 
-  $: barClass  = bar[torrent.category]   ?? bar.error;
+  $: barClass   = bar[torrent.category]   ?? bar.error;
   $: badgeClass = badge[torrent.category] ?? badge.error;
 </script>
 
+<!--
+  Fixed 4-column grid: [14px drag handle] [28px priority#] [1fr content] [auto controls]
+  All 4 slots are always rendered so columns stay correctly mapped for both active and seeding rows.
+  Seeding rows hide the first two slots with `invisible` (preserves layout space).
+-->
 <div
   class="grid items-center gap-x-2 rounded-lg border border-transparent px-2 py-2
          transition-colors hover:border-gray-700/60 hover:bg-gray-800/50"
-  style="grid-template-columns: {isSeeding ? '0px 0px' : '14px 28px'} 1fr auto"
+  style="grid-template-columns: 14px 28px 1fr auto"
 >
 
-  <!-- ── Drag handle (active items only) ─────────────────────────────────── -->
-  {#if !isSeeding}
-    <div class="flex shrink-0 cursor-grab items-center text-gray-700 hover:text-gray-500
-                active:cursor-grabbing" title="Drag to reorder">
-      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
-        <circle cx="2.5" cy="2"  r="1.3"/>
-        <circle cx="7.5" cy="2"  r="1.3"/>
-        <circle cx="2.5" cy="7"  r="1.3"/>
-        <circle cx="7.5" cy="7"  r="1.3"/>
-        <circle cx="2.5" cy="12" r="1.3"/>
-        <circle cx="7.5" cy="12" r="1.3"/>
-      </svg>
-    </div>
-  {/if}
+  <!-- ── Drag handle (invisible for seeding rows, keeps grid layout intact) ── -->
+  <div
+    class="flex items-center {isSeeding
+      ? 'invisible'
+      : 'cursor-grab text-gray-700 hover:text-gray-500 active:cursor-grabbing'}"
+    title={isSeeding ? '' : 'Drag to reorder'}
+  >
+    <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
+      <circle cx="2.5" cy="2"  r="1.3"/>
+      <circle cx="7.5" cy="2"  r="1.3"/>
+      <circle cx="2.5" cy="7"  r="1.3"/>
+      <circle cx="7.5" cy="7"  r="1.3"/>
+      <circle cx="2.5" cy="12" r="1.3"/>
+      <circle cx="7.5" cy="12" r="1.3"/>
+    </svg>
+  </div>
 
-  <!-- ── Priority number (active items only) ─────────────────────────────── -->
-  {#if !isSeeding}
-    <span class="shrink-0 text-right font-mono text-[10px] text-gray-600" aria-label="Priority">
+  <!-- ── Priority number (invisible for seeding rows) ─────────────────────── -->
+  <span
+    class="text-right font-mono text-[10px] {isSeeding ? 'invisible' : 'text-gray-600'}"
+    aria-label={isSeeding ? '' : 'Priority'}
+  >
+    {#if !isSeeding}
       {torrent.priority > 0 ? `#${torrent.priority}` : '—'}
-    </span>
-  {/if}
+    {/if}
+  </span>
 
-  <!-- ── Main content: name + progress bar + stats ────────────────────────── -->
+  <!-- ── Main content: name + progress bar + stats ─────────────────────────── -->
   <div class="min-w-0">
 
     <!-- Name + badge -->
@@ -100,11 +98,10 @@
       ></div>
     </div>
 
-    <!-- Stats row -->
+    <!-- Stats -->
     <div class="mt-1 flex flex-wrap items-center gap-x-3">
       <span class="font-mono text-[11px] text-gray-400">{torrent.progressPct}</span>
       <span class="font-mono text-[11px] text-gray-600">{torrent.size}</span>
-
       {#if torrent.dlSpeed}
         <span class="font-mono text-[11px] text-green-400">↓ {torrent.dlSpeed}</span>
       {/if}
@@ -118,7 +115,7 @@
     </div>
   </div>
 
-  <!-- ── Controls ─────────────────────────────────────────────────────────── -->
+  <!-- ── Controls ──────────────────────────────────────────────────────────── -->
   <div class="ml-1 flex shrink-0 items-center gap-0.5">
 
     <!-- Pause / Resume toggle -->
@@ -132,10 +129,9 @@
                : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'}"
     >{isStopped ? '▶' : '⏸'}</button>
 
-    <!-- Priority buttons (active queue items only) -->
+    <!-- Priority buttons — active queue only -->
     {#if !isSeeding}
 
-      <!-- Top priority -->
       <button
         on:click={() => send('topPrio')}
         title="Top priority"
@@ -150,7 +146,6 @@
         aria-label="Move to top"
       >↟</button>
 
-      <!-- Move up one -->
       <button
         on:click={() => send('increasePrio')}
         title="Move up one"
@@ -165,7 +160,6 @@
         aria-label="Move up"
       >↑</button>
 
-      <!-- Move down one -->
       <button
         on:click={() => send('decreasePrio')}
         title="Move down one"

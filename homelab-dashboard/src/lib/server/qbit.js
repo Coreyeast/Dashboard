@@ -169,6 +169,8 @@ export function classifyState(state) {
 
     case 'pausedDL':
     case 'pausedUP':
+    case 'stoppedDL':   // qBittorrent v5+ renamed pausedDL → stoppedDL
+    case 'stoppedUP':   // qBittorrent v5+ renamed pausedUP → stoppedUP
       return { label: 'Stopped', category: 'stopped' };
 
     case 'queuedDL':
