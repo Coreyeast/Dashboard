@@ -5,9 +5,7 @@
 
   const dispatch = createEventDispatcher();
 
-  let stats      = null;
-  let prevDlRaw  = null;
-  let dlDelta    = null;   // % change vs previous poll
+  let stats  = null;
   let pollId;
 
   async function fetchStats() {
@@ -15,11 +13,6 @@
       const res  = await fetch('/api/stats');
       const data = await res.json();
       if (!res.ok || data.error) return;
-
-      if (prevDlRaw !== null && prevDlRaw > 0) {
-        dlDelta = ((data.dlSpeedRaw - prevDlRaw) / prevDlRaw) * 100;
-      }
-      prevDlRaw = data.dlSpeedRaw;
       stats = data;
     } catch { /* network error — keep stale */ }
   }
@@ -31,10 +24,6 @@
 
   onDestroy(() => clearInterval(pollId));
 
-  $: dlDeltaLabel = dlDelta === null
-    ? null
-    : `${dlDelta >= 0 ? '+' : ''}${dlDelta.toFixed(1)}%`;
-  $: dlDeltaPos = dlDelta !== null && dlDelta >= 0;
 </script>
 
 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -50,14 +39,6 @@
           <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
         </svg>
       </span>
-      {#if dlDeltaLabel}
-        <span class="rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold
-                     {dlDeltaPos
-                       ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                       : 'bg-red-500/15 text-red-600 dark:text-red-400'}">
-          {dlDeltaLabel}
-        </span>
-      {/if}
     </div>
     <div>
       <p class="font-mono text-[11px] uppercase tracking-widest text-slate-500 dark:text-gray-500">

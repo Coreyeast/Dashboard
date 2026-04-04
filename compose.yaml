@@ -274,7 +274,12 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - /:/host:ro                              # Host root read-only (for storage stats)
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind:
+          propagation: rslave                   # Propagates CIFS/NFS submounts (e.g. /data)
       - ./homelab-dashboard/config:/app/config  # Edit apps.json here without rebuilding
     environment:
       - HOST_MOUNT=/host
